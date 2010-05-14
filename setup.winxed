@@ -1,0 +1,495 @@
+#! winxed
+
+/*
+
+=head1 NAME
+
+setup.winxed - Python distutils style
+
+=head1 DESCRIPTION
+
+=head2 FUNCTIONS
+
+=over 4
+
+=cut
+
+*/
+
+/*
+
+=item C<parse_json>
+
+=cut
+
+*/
+
+function parse_json(string json_str) {
+    var json = load_language('data_json');
+    var promise = json.compile(json_str);
+    return promise();
+}
+
+/*
+
+=item C<slurp_file>
+
+read all the contents of a file
+
+=cut
+
+*/
+
+function slurp_file(string filename) {
+    var file = open(filename);
+    string contents = file.readall();
+    file.close();
+    return contents;
+}
+
+/*
+
+=item C<dump_file>
+
+overwrite/create a file with a string
+
+=cut
+
+*/
+
+function dump_file(string filename, string contents) {
+    var file = open(filename, 'rw');
+    file.puts(contents);
+    file.close();
+}
+
+/*
+
+=item C<load_setup_json>
+
+read setup.json
+
+=cut
+
+*/
+
+function load_setup_json() {
+    return parse_json(slurp_file('setup.json'));
+}
+
+/*
+
+=item C<pick_iv>
+
+Pick a libjit type corresponding to Parrot's IV
+
+=item C<pick_uv>
+
+Pick a libjit type corresponding to Parrot's UV
+
+=item C<pick_nv>
+
+Pick a libjit type corresponding to Parrot's NV
+
+=cut
+
+*/
+
+function pick_iv() {
+    using get_config;
+    var parrot_config = get_config();
+    string iv = parrot_config['iv'];
+    switch (iv) {
+        case 'short':
+            return 'jit_type_sys_short';
+        case 'int':
+            return 'jit_type_sys_int';
+        case 'long':
+            return 'jit_type_sys_long';
+        case 'long long':
+            return 'jit_type_sys_longlong';
+        default:
+            throw new 'Exception'({
+                'message': sprintf("Couldn't determine a libjity type for intval of type '%s'", [iv])
+            });
+    }
+}
+
+function pick_uv() {
+    using get_config;
+    var parrot_config = get_config();
+    string iv = parrot_config['iv'];
+    switch (iv) {
+        case 'short':
+            return 'jit_type_sys_ushort';
+        case 'int':
+            return 'jit_type_sys_uint';
+        case 'long':
+            return 'jit_type_sys_ulong';
+        case 'long long':
+            return 'jit_type_sys_ulonglong';
+        default:
+            throw new 'Exception'({
+                'message':
+                    sprintf("Couldn't determine a libjity type for uintval of type 'unsigned %s'", [iv])
+            });
+    }
+}
+
+function pick_nv() {
+    using get_config;
+    var parrot_config = get_config();
+    string nv = parrot_config['nv'];
+    switch (nv) {
+        case 'float':
+            return 'jit_type_sys_float';
+        case 'double':
+            return 'jit_type_sys_double';
+        case 'long double':
+            return 'jit_type_sys_long_double';
+        default:
+            throw new 'Exception'({
+                'message': sprintf("Couldn't determine a libjity type for floatval of type '%s'", [nv])
+            });
+    }
+}
+
+/*
+
+=item C<gen_src>
+
+generate the C source
+
+=cut
+
+ */
+
+function gen_src() {
+    do_subst('src/libjit_fb.h.in', 'src/libjit_fb.h');
+    do_subst('src/libjit_fb.c.in', 'src/libjit_fb.c');
+}
+
+function do_subst(string in_file, string out_file) {
+    var vtable_wrappers = gen_vtable_wrappers({
+            'get_integer':          [ [],           'INTVAL' ],
+            'set_integer_native':   [ ['INTVAL'],   'void' ],
+            'get_pointer':          [ [],           'void_ptr' ],
+            'set_pointer':          [ ['void_ptr'], 'void' ],
+            'get_string_keyed_int': [ ['INTVAL'],   'void_ptr' ]
+    });
+
+    var function_wrappers = gen_function_wrappers({
+            'Parrot_pcc_fill_params_from_c_args':
+            [ ['void_ptr', 'void_ptr', 'void_ptr', '...'],  'void' ],
+            'Parrot_pcc_build_call_from_c_args':
+            [ ['void_ptr', 'void_ptr', 'void_ptr', '...'],  'void' ],
+            'Parrot_str_new':
+            [ ['void_ptr', 'void_ptr', 'UINTVAL'],          'void_ptr' ],
+            'Parrot_str_cstring':
+            [ ['void_ptr', 'void_ptr'],                     'void_ptr' ],
+            'Parrot_str_to_cstring':
+            [ ['void_ptr', 'void_ptr'],                     'void_ptr' ],
+            'Parrot_str_free_cstring':
+            [ ['void_ptr'],                                 'void' ],
+            'Parrot_pmc_new_noinit':
+            [ ['void_ptr', 'UINTVAL'],                      'void_ptr' ],
+            'mem_sys_allocate':
+            [ ['long'],                                     'void_ptr' ],
+            'mem_sys_free':
+            [ ['void_ptr'],                                 'void' ],
+            'null_func':
+            [ [],                                           'void' ],
+            'Parrot_NCI_pcc_params_signature':
+            [ ['void_ptr', 'void_ptr'],                     'void_ptr' ],
+            'Parrot_NCI_pcc_return_signature':
+            [ ['void_ptr', 'void_ptr'],                     'void_ptr' ]
+    });
+
+    var subst_data = {
+        '@libjit_iv@':            pick_iv(),
+        '@libjit_uv@':            pick_uv(),
+        '@libjit_nv@':            pick_nv(),
+        '@libjit_has_alloca@':    0, // XXX detect this properly
+        '@vtable_wrap_decls@':    join( "\n", decls( vtable_wrappers ) ),
+        '@vtable_wrap_defns@':    join( "\n", defns( vtable_wrappers ) ),
+        '@func_wrap_decls@':      join( "\n", decls( function_wrappers ) ),
+        '@func_wrap_defns@':      join( "\n", defns( function_wrappers ) )
+    };
+
+    var in_fh  = open(in_file, 'ro');
+    var out_fh = open(out_file, 'rw');
+
+    while (in_fh) {
+        var line = in_fh.readline();
+
+        for (string tmpl_var in subst_data) {
+            line.replace(tmpl_var, subst_data[tmpl_var]);
+        }
+
+        out_fh.puts(line);
+    }
+
+    in_fh.close();
+    out_fh.close();
+}
+
+function decls(var wrappers) {
+    var retv = [];
+    for (var x in wrappers)
+        retv.push(x['decl']);
+    return retv;
+}
+
+function defns(var wrappers) {
+    var retv = [];
+    for (var x in wrappers)
+        retv.push(x['defn']);
+    return retv;
+}
+
+function jit_prefix_type(string type) {
+    if (type == downcase(type))
+        return 'jit_type_' + type;
+    else if (type == upcase(type))
+        return 'JIT_TYPE_' + type;
+    else
+        throw new 'Exception'({ "message": "can't jit_prefix_type: inconsistent case" });
+}
+
+function gen_vtable_wrappers(var vtables) {
+    const string vtable_decl_tmpl = 
+        "static jit_value_t\n" +
+        "jit__vtable_%s(jit_function_t, jit_value_t, jit_value_t %s);";
+
+    const string vtable_defn_tmpl = 
+        "static jit_value_t\n" +
+        "jit__vtable_%s(jit_function_t f, jit_value_t interp, jit_value_t self %s) {" +
+        "   const int n_args = %d + 2;\n" +
+        "   jit_type_t sig;\n" +
+        "   jit_value_t vtable, method;\n" +
+        "   jit_type_t  arg_t[] = { jit_type_void_ptr, jit_type_void_ptr %s };\n" +
+        "   jit_value_t arg_v[] = { interp, self %s };\n" +
+        "   sig = jit_type_create_signature(jit_abi_cdecl, %s, arg_t, n_args, 1);\n" +
+        "   vtable = jit_insn_load_relative(f, self, offsetof(PMC, vtable), jit_type_void_ptr);\n" +
+        "   method = jit_insn_load_relative(f, vtable, offsetof(VTABLE, %s), jit_type_void_ptr);\n" +
+        "   return jit_insn_call_indirect(f, method, sig, arg_v, n_args, 0);\n" +
+        "}";
+
+    var wrappers = [];
+
+    for (string entry_name in vtables) {
+        var entry_sig = vtables[entry_name];
+
+        int n_args = entry_sig[0];
+
+        var acc = [];
+        for (int i = 0; i < n_args; i++)
+            acc[i] = sprintf(', %s', [jit_prefix_type(entry_sig[0,i])]);
+        string arg_t = join('', acc);
+
+        string ret_t = jit_prefix_type(entry_sig[1]);
+
+        acc = [];
+        for (int i = 0; i < n_args; i++)
+            acc.push(sprintf(', v%d', [i]));
+        string arg_v = join('', acc);
+
+        acc = [];
+        for (int i = 0; i < n_args; i++)
+            acc.push(', jit_value_t');
+        string arg_decls_t = join('', acc);
+
+        acc = [];
+        for (int i = 0; i < n_args; i++)
+            acc.push(sprintf(', jit_value_t v%d', [i]));
+        string arg_decls_v = join('', acc);
+
+        wrappers.push({
+                'decl': sprintf(vtable_decl_tmpl, [entry_name, arg_decls_t]),
+                'defn': sprintf(vtable_defn_tmpl,
+                    [entry_name, arg_decls_v, n_args, arg_t, arg_v, ret_t, entry_name])
+        });
+    }
+
+    return wrappers;
+}
+
+function gen_function_wrappers(var funcs) {
+    var wrappers = [];
+
+    for (string entry_name in funcs) {
+        var entry_sig = funcs[entry_name];
+
+        var args_sig = entry_sig[0];
+        int n_args   = elements(args_sig);
+
+        string func_decl_tmpl;
+        string func_defn_tmpl;
+        if (n_args && args_sig[n_args - 1] == '...') {
+            args_sig.pop();
+            n_args--;
+
+            func_decl_tmpl = 
+                "static jit_value_t\n" +
+                "jit__%s(jit_function_t %s, jit_type_t *, jit_value_t *, int);\n";
+            func_defn_tmpl = 
+                "static jit_value_t\n" +
+                "jit__%s(jit_function_t f %s, jit_type_t *va_t, jit_value_t *va_v, const int va_n) {\n" +
+                "   int i;\n" +
+                "   const int n_args = %d;\n" +
+                "   jit_type_t sig;\n" +
+                "   jit_value_t vtable;\n" +
+                "   jit_type_t  arg_t[n_args + va_n];\n" +
+                "   jit_value_t arg_v[n_args + va_n];\n" +
+                "   jit_type_t  carg_t[] = { %s };\n" +
+                "   jit_value_t carg_v[] = { %s };\n" +
+                "   for (i = 0; i < n_args; i++) {\n" +
+                "       arg_t[i] = carg_t[i];\n" +
+                "       arg_v[i] = carg_v[i];\n" +
+                "   }\n" +
+                "   for (i = 0; i < va_n; i++) {\n" +
+                "       arg_t[n_args + i] = va_t[i];\n" +
+                "       arg_v[n_args + i] = va_v[i];\n" +
+                "   }\n" +
+                "   sig = jit_type_create_signature(jit_abi_cdecl, %s, arg_t, n_args + va_n, 1);\n" +
+                "   return jit_insn_call_native(f, \"%s\", (void *)&%s, sig, arg_v, n_args + va_n, 0);\n" +
+                "}\n";
+        } else {
+            func_decl_tmpl = 
+                "static jit_value_t\n" +
+                "jit__%s(jit_function_t %s);\n";
+            func_defn_tmpl = 
+                "static jit_value_t\n" +
+                "jit__%s(jit_function_t f %s) {\n" +
+                "   const int n_args = %d;\n" +
+                "   jit_type_t sig;\n" +
+                "   jit_value_t vtable;\n" +
+                "   jit_type_t  arg_t[] = { %s };\n" +
+                "   jit_value_t arg_v[] = { %s };\n" +
+                "   sig = jit_type_create_signature(jit_abi_cdecl, %s, arg_t, n_args, 1);\n" +
+                "   return jit_insn_call_native(f, \"%s\", (void *)&%s, sig, arg_v, n_args, 0);\n" +
+                "}\n";
+        }
+
+        var acc = [];
+        for (int i = 0; i < n_args; i++)
+            acc[i] = sprintf('%s', [jit_prefix_type(args_sig[i])]);
+        string arg_t = join(', ', acc);
+
+        string ret_t = jit_prefix_type(entry_sig[1]);
+
+        acc = [];
+        for (int i = 0; i < n_args; i++)
+            acc.push(sprintf('v%d', [i]));
+        string arg_v = join(', ', acc);
+
+        acc = [];
+        for (int i = 0; i < n_args; i++)
+            acc.push(', jit_value_t');
+        string arg_decls_t = join('', acc);
+
+        acc = [];
+        for (int i = 0; i < n_args; i++)
+            acc.push(sprintf(', jit_value_t v%d', [i]));
+        string arg_decls_v = join('', acc);
+
+        wrappers.push({
+                'decl': sprintf(func_decl_tmpl, [entry_name, arg_decls_t]),
+                'defn': sprintf(func_defn_tmpl,
+                    [entry_name, arg_decls_v, n_args, arg_t, arg_v, ret_t, entry_name, entry_name])
+        });
+    }
+
+    return wrappers;
+}
+
+/*
+
+=item C<compile_dynlib>
+
+compile a Parrot dynlib from a set of C source files using (optional) flags
+
+mostly stolen from C<distutils.pir>
+
+=cut
+
+*/
+
+function compile_dynlib(string name, var sources, string cflags, string ldflags) {
+    cflags  = join(' ', [cflags ]); //,  get_cflags()]);
+    ldflags = join(' ', [ldflags, get_ldflags()]);
+
+    mkpath('dynext', 1:[named('verbose')]);
+
+    string obj_ext = get_obj();
+    var objects = new 'ResizableStringArray'();
+    for (string src in sources) {
+        int strlen = length(src);
+        var obj = substr(src, strlen - 2, 2) == '.c' ?
+                    substr(src, 0, strlen - 2) + obj_ext :
+                    src + obj_ext;
+        __compile_cc(obj, src, cflags);
+        objects.push(obj);
+    }
+
+    var config      = get_config();
+    string load_ext = get_load_ext();
+    string dynext   = 'dynext/' + name + load_ext;
+    string cmd      = join( ' ', [ config['ld'], config['ld_out'], dynext, ldflags, config['ld_load_flags'],
+                              config['parrot_is_shared'] ? config['inst_libparrot_ldflags'] : '' ] )
+                      + join(' ', objects);
+    system(cmd, 1:[named('verbose')]);
+
+    // XXX no access to _has_strip outside of distutils.pir
+    // if (_has_strip(cflags))
+    //     system('strip ' + dynext, 1:[named(verbose)]);
+}
+
+/*
+
+=item C<compile_library()>
+
+compile this library
+
+=cut
+
+*/
+
+function compile_library() {
+    compile_dynlib('libjit_fb', ['src/libjit_fb.c'], '', '-ljit');
+}
+
+/*
+
+=item C<main>
+
+run distutils
+
+=cut
+
+ */
+
+function main(var argv) {
+    using extern distutils;
+    using gen_src;
+    using compile_library;
+
+    /* ignore first element in argv (program name) */
+    argv.shift();
+
+    register_step_before('build', compile_library);
+    register_step_before('build', gen_src);
+
+    var du_conf = load_setup_json();
+    setup(argv:[flat], du_conf:[flat,named]);
+}
+
+/*
+
+=back
+
+=cut
+
+vim: expandtab shiftwidth=4 ft=javascript:
+
+*/

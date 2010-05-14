@@ -1,0 +1,17 @@
+{
+    "name": "libjit_fb",
+    "version": "0.001",
+
+    "abstract": "libjit framebuilder",
+    "description": "Parrot plug-in library to dynamically build Native Call Interface call-out thunks based on LibJIT",
+    "keywords":
+	[ "libjit", "framebuilder", "nci", "jit" ],
+
+    "copyright_holder": "Peter Lobsinger",
+    "license_type": "Artistic License 2.0",
+    "license_uri"      : "http://www.perlfoundation.org/artistic_license_2_0",
+
+    "checkout_uri": "http://0.0.0.0/tba",
+    "browser_uri":  "http://0.0.0.0/tba",
+    "project_uri":  "http://0.0.0.0/tba"
+}
