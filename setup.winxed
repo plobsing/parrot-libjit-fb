@@ -164,58 +164,19 @@ generate the C source
 
  */
 
-function gen_src() {
-    do_subst('src/libjit_fb.h.in', 'src/libjit_fb.h');
-    do_subst('src/libjit_fb.c.in', 'src/libjit_fb.c');
+function template_fill(var kv[named,slurpy]) {
+     var templates     = kv['template'] ? kv['template'] : {};
+     var template_data = kv['template_data'] ? kv['template_data'] : [];
+ 
+     for (string tmpl_file in templates) {
+         string targ_file = templates[tmpl_file];
+         do_subst(template_data, tmpl_file, targ_file);
+     }
 }
 
-function do_subst(string in_file, string out_file) {
-    var vtable_wrappers = gen_vtable_wrappers({
-            'get_integer':          [ [],           'INTVAL' ],
-            'set_integer_native':   [ ['INTVAL'],   'void' ],
-            'get_pointer':          [ [],           'void_ptr' ],
-            'set_pointer':          [ ['void_ptr'], 'void' ],
-            'get_string_keyed_int': [ ['INTVAL'],   'void_ptr' ]
-    });
-
-    var function_wrappers = gen_function_wrappers({
-            'Parrot_pcc_fill_params_from_c_args':
-            [ ['void_ptr', 'void_ptr', 'void_ptr', '...'],  'void' ],
-            'Parrot_pcc_build_call_from_c_args':
-            [ ['void_ptr', 'void_ptr', 'void_ptr', '...'],  'void' ],
-            'Parrot_str_new':
-            [ ['void_ptr', 'void_ptr', 'UINTVAL'],          'void_ptr' ],
-            'Parrot_str_cstring':
-            [ ['void_ptr', 'void_ptr'],                     'void_ptr' ],
-            'Parrot_str_to_cstring':
-            [ ['void_ptr', 'void_ptr'],                     'void_ptr' ],
-            'Parrot_str_free_cstring':
-            [ ['void_ptr'],                                 'void' ],
-            'Parrot_pmc_new_noinit':
-            [ ['void_ptr', 'UINTVAL'],                      'void_ptr' ],
-            'mem_sys_allocate':
-            [ ['long'],                                     'void_ptr' ],
-            'mem_sys_free':
-            [ ['void_ptr'],                                 'void' ],
-            'null_func':
-            [ [],                                           'void' ],
-            'Parrot_NCI_pcc_params_signature':
-            [ ['void_ptr', 'void_ptr'],                     'void_ptr' ],
-            'Parrot_NCI_pcc_return_signature':
-            [ ['void_ptr', 'void_ptr'],                     'void_ptr' ]
-    });
-
-    var subst_data = {
-        '@libjit_iv@':            pick_iv(),
-        '@libjit_uv@':            pick_uv(),
-        '@libjit_nv@':            pick_nv(),
-        '@libjit_has_alloca@':    0, // XXX detect this properly
-        '@vtable_wrap_decls@':    join( "\n", decls( vtable_wrappers ) ),
-        '@vtable_wrap_defns@':    join( "\n", defns( vtable_wrappers ) ),
-        '@func_wrap_decls@':      join( "\n", decls( function_wrappers ) ),
-        '@func_wrap_defns@':      join( "\n", defns( function_wrappers ) )
-    };
-
+function do_subst(var subst_data, string in_file, string out_file) {
+    say(in_file);
+    say(out_file);
     var in_fh  = open(in_file, 'ro');
     var out_fh = open(out_file, 'rw');
 
@@ -223,6 +184,7 @@ function do_subst(string in_file, string out_file) {
         var line = in_fh.readline();
 
         for (string tmpl_var in subst_data) {
+            string search = "@" + tmpl_var + "@";
             line.replace(tmpl_var, subst_data[tmpl_var]);
         }
 
@@ -471,17 +433,43 @@ run distutils
 
 function main(var argv) {
     using extern distutils;
-    using gen_src;
-    using compile_library;
+    using template_fill;
+    using template_clean;
 
     /* ignore first element in argv (program name) */
     argv.shift();
 
-    register_step_before('build', compile_library);
-    register_step_before('build', gen_src);
+    register_step_before('build', template_fill);
+    register_step_after('clean', template_clean);
 
-    var du_conf = load_setup_json();
-    setup(argv:[flat], du_conf:[flat,named]);
+    var conf = load_setup_json();
+    conf['template_data'] = gen_tmpl_data(conf);
+
+    setup(argv:[flat], conf:[flat,named]);
+}
+
+function template_clean(var kv[named,slurpy]) {
+     var templates     = kv['template'] ? kv['template'] : {};
+ 
+     for (string tmpl_file in templates) {
+         string targ_file = templates[tmpl_file];
+         unlink(targ_file, 1:[named('verbose')]);
+     }
+}
+
+function gen_tmpl_data(var conf) {
+    var vtable_wrappers   = gen_vtable_wrappers(conf['wrapped_vtables']);
+    var function_wrappers = gen_function_wrappers(conf['wrapped_functions']);
+    return {
+        '@libjit_iv@':            pick_iv(),
+        '@libjit_uv@':            pick_uv(),
+        '@libjit_nv@':            pick_nv(),
+        '@libjit_has_alloca@':    0, // XXX detect this properly
+        '@vtable_wrap_decls@':    join( "\n", decls( vtable_wrappers ) ),
+        '@vtable_wrap_defns@':    join( "\n", defns( vtable_wrappers ) ),
+        '@func_wrap_decls@':      join( "\n", decls( function_wrappers ) ),
+        '@func_wrap_defns@':      join( "\n", defns( function_wrappers ) )
+    };
 }
 
 /*

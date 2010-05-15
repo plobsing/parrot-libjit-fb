@@ -1,0 +1,35 @@
+pmclass LibjitThunk dynpmc group libjit_fb auto_attrs {
+    ATTR void   *thunk; /* the NCI thunk proper */
+    ATTR STRING *sig;   /* the signature */
+    ATTR PMC    *fac;   /* the factory (contains the owning context) */
+
+    VTABLE void init() {
+	PObj_custom_mark_SET(SELF);
+    }
+
+    VTABLE void *get_pointer() {
+	void *thunk;
+	GET_ATTR_thunk(INTERP, SELF, thunk);
+	return thunk;
+    }
+
+    VTABLE PMC *clone() {
+	PMC    *fac;
+	STRING *sig;
+
+	GET_ATTR_sig(INTERP, SELF, sig);
+
+	return build_call_func(interp, sig);
+    }
+
+    VTABLE void mark() {
+	PMC    *fac;
+	STRING *sig;
+
+	GET_ATTR_sig(INTERP, SELF, sig);
+	GET_ATTR_fac(INTERP, SELF, fac);
+
+	Parrot_gc_mark_STRING_alive(INTERP, sig);
+	Parrot_gc_mark_PMC_alive(INTERP, fac);
+    }
+}
