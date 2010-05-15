@@ -1,0 +1,36 @@
+=head1 NAME
+
+libjit_fb - Parrot LibJIT frame builder
+
+=head1 SYNOPSIS
+
+  #! winxed
+  function main() {
+      loadlib('libjit_fb');
+      var libm = loadlib('libm');
+      var sinf = dlfunc(libm, 'sinf', 'ff');
+      float x = sinf(1);
+      say(x);
+  }
+
+=head1 DESCRIPTION
+
+C<libjit_fb> is a Parrot dynext library to dynamically build Native Call
+Interface call-out thunks using LibJIT.
+
+On load, it registers itself as Parrot's frame builder. After this, Parrot will
+make requests to this library whenever new NCI thunks are required.
+
+=head1 INSTALL
+
+  parrot setup.pir build
+  parrot setup.pir install
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2010 Peter Lobsinger
+
+This code is distributed under the terms of the Artistic License 2.0.
+For more details, see L<http://www.perlfoundation.org/artistic_license_2_0>.
+
+=cut
