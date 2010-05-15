@@ -8,59 +8,92 @@ setup.winxed - Python distutils style
 
 =head1 DESCRIPTION
 
-=head2 FUNCTIONS
+=head2 Functions
 
 =over 4
 
-=cut
+=item C<main>
 
-*/
-
-/*
-
-=item C<parse_json>
+run distutils
 
 =cut
 
-*/
+ */
 
-function parse_json(string json_str) {
-    var json = load_language('data_json');
-    var promise = json.compile(json_str);
-    return promise();
+function main(var argv) {
+    using extern distutils;
+    using template_fill;
+    using template_clean;
+
+    /* ignore first element in argv (program name) */
+    argv.shift();
+
+    register_step_before('build', template_fill);
+    register_step_after('clean', template_clean);
+
+    var conf = load_setup_json();
+    conf['template_data'] = gen_tmpl_data(conf);
+
+    setup(argv:[flat], conf:[flat,named]);
 }
 
 /*
 
-=item C<slurp_file>
+=item C<template_fill>
 
-read all the contents of a file
+custom distutils build step to replace @var@ patterns in template files with the
+appropriate data to create the actual source files
+
+=item C<do_subst>
+
+run a template substitution on one file
+
+=item C<template_clean>
+
+custom distutils clean step to clean up files generated with templates
 
 =cut
 
 */
 
-function slurp_file(string filename) {
-    var file = open(filename);
-    string contents = file.readall();
-    file.close();
-    return contents;
+function template_fill(var kv[named,slurpy]) {
+     var templates     = kv['template'] ? kv['template'] : {};
+     var template_data = kv['template_data'] ? kv['template_data'] : [];
+ 
+     for (string tmpl_file in templates) {
+         string targ_file = templates[tmpl_file];
+         do_subst(template_data, tmpl_file, targ_file);
+     }
 }
 
-/*
+function do_subst(var subst_data, string in_file, string out_file) {
+    say(in_file);
+    say(out_file);
+    var in_fh  = open(in_file, 'ro');
+    var out_fh = open(out_file, 'rw');
 
-=item C<dump_file>
+    while (in_fh) {
+        var line = in_fh.readline();
 
-overwrite/create a file with a string
+        for (string tmpl_var in subst_data) {
+            string search = "@" + tmpl_var + "@";
+            line.replace(search, subst_data[tmpl_var]);
+        }
 
-=cut
+        out_fh.puts(line);
+    }
 
-*/
+    in_fh.close();
+    out_fh.close();
+}
 
-function dump_file(string filename, string contents) {
-    var file = open(filename, 'rw');
-    file.puts(contents);
-    file.close();
+function template_clean(var kv[named,slurpy]) {
+     var templates     = kv['template'] ? kv['template'] : {};
+ 
+     for (string tmpl_file in templates) {
+         string targ_file = templates[tmpl_file];
+         unlink(targ_file, 1:[named('verbose')]);
+     }
 }
 
 /*
@@ -74,7 +107,37 @@ read setup.json
 */
 
 function load_setup_json() {
-    return parse_json(slurp_file('setup.json'));
+    var file        = open('setup.json');
+    string json_str = file.readall();
+    file.close();
+    var json        = load_language('data_json');
+    var promise     = json.compile(json_str);
+    return promise();
+}
+
+/*
+
+=item C<gen_tmpl_data>
+
+generate data to be used in templates
+
+=cut
+
+*/
+
+function gen_tmpl_data(var conf) {
+    var vtable_wrappers   = gen_vtable_wrappers(conf['wrapped_vtables']);
+    var function_wrappers = gen_function_wrappers(conf['wrapped_functions']);
+    return {
+        'libjit_iv':            pick_iv(),
+        'libjit_uv':            pick_uv(),
+        'libjit_nv':            pick_nv(),
+        'libjit_has_alloca':    0, // XXX detect this properly
+        'vtable_wrap_decls':    join( "\n", decls( vtable_wrappers ) ),
+        'vtable_wrap_defns':    join( "\n", defns( vtable_wrappers ) ),
+        'func_wrap_decls':      join( "\n", decls( function_wrappers ) ),
+        'func_wrap_defns':      join( "\n", defns( function_wrappers ) )
+    };
 }
 
 /*
@@ -156,44 +219,17 @@ function pick_nv() {
 
 /*
 
-=item C<gen_src>
+=item C<decls>
 
-generate the C source
+get the declaration portions of the wrappers
+
+=item C<defns>
+
+get the definition portions of the wrappers
 
 =cut
 
- */
-
-function template_fill(var kv[named,slurpy]) {
-     var templates     = kv['template'] ? kv['template'] : {};
-     var template_data = kv['template_data'] ? kv['template_data'] : [];
- 
-     for (string tmpl_file in templates) {
-         string targ_file = templates[tmpl_file];
-         do_subst(template_data, tmpl_file, targ_file);
-     }
-}
-
-function do_subst(var subst_data, string in_file, string out_file) {
-    say(in_file);
-    say(out_file);
-    var in_fh  = open(in_file, 'ro');
-    var out_fh = open(out_file, 'rw');
-
-    while (in_fh) {
-        var line = in_fh.readline();
-
-        for (string tmpl_var in subst_data) {
-            string search = "@" + tmpl_var + "@";
-            line.replace(tmpl_var, subst_data[tmpl_var]);
-        }
-
-        out_fh.puts(line);
-    }
-
-    in_fh.close();
-    out_fh.close();
-}
+*/
 
 function decls(var wrappers) {
     var retv = [];
@@ -209,6 +245,16 @@ function defns(var wrappers) {
     return retv;
 }
 
+/*
+
+=item C<jit_prefix_type>
+
+convert a C type into a libjit type
+
+=cut
+
+*/
+
 function jit_prefix_type(string type) {
     if (type == downcase(type))
         return 'jit_type_' + type;
@@ -217,6 +263,18 @@ function jit_prefix_type(string type) {
     else
         throw new 'Exception'({ "message": "can't jit_prefix_type: inconsistent case" });
 }
+
+/*
+
+=item C<gen_vtable_wrappers>
+
+=item C<gen_function_wrappers>
+
+generate C source code to wrap operations for later JIT calling
+
+=cut
+
+*/
 
 function gen_vtable_wrappers(var vtables) {
     const string vtable_decl_tmpl = 
@@ -363,113 +421,6 @@ function gen_function_wrappers(var funcs) {
     }
 
     return wrappers;
-}
-
-/*
-
-=item C<compile_dynlib>
-
-compile a Parrot dynlib from a set of C source files using (optional) flags
-
-mostly stolen from C<distutils.pir>
-
-=cut
-
-*/
-
-function compile_dynlib(string name, var sources, string cflags, string ldflags) {
-    cflags  = join(' ', [cflags ]); //,  get_cflags()]);
-    ldflags = join(' ', [ldflags, get_ldflags()]);
-
-    mkpath('dynext', 1:[named('verbose')]);
-
-    string obj_ext = get_obj();
-    var objects = new 'ResizableStringArray'();
-    for (string src in sources) {
-        int strlen = length(src);
-        var obj = substr(src, strlen - 2, 2) == '.c' ?
-                    substr(src, 0, strlen - 2) + obj_ext :
-                    src + obj_ext;
-        __compile_cc(obj, src, cflags);
-        objects.push(obj);
-    }
-
-    var config      = get_config();
-    string load_ext = get_load_ext();
-    string dynext   = 'dynext/' + name + load_ext;
-    string cmd      = join( ' ', [ config['ld'], config['ld_out'], dynext, ldflags, config['ld_load_flags'],
-                              config['parrot_is_shared'] ? config['inst_libparrot_ldflags'] : '' ] )
-                      + join(' ', objects);
-    system(cmd, 1:[named('verbose')]);
-
-    // XXX no access to _has_strip outside of distutils.pir
-    // if (_has_strip(cflags))
-    //     system('strip ' + dynext, 1:[named(verbose)]);
-}
-
-/*
-
-=item C<compile_library()>
-
-compile this library
-
-=cut
-
-*/
-
-function compile_library() {
-    compile_dynlib('libjit_fb', ['src/libjit_fb.c'], '', '-ljit');
-}
-
-/*
-
-=item C<main>
-
-run distutils
-
-=cut
-
- */
-
-function main(var argv) {
-    using extern distutils;
-    using template_fill;
-    using template_clean;
-
-    /* ignore first element in argv (program name) */
-    argv.shift();
-
-    register_step_before('build', template_fill);
-    register_step_after('clean', template_clean);
-
-    var conf = load_setup_json();
-    conf['template_data'] = gen_tmpl_data(conf);
-
-    setup(argv:[flat], conf:[flat,named]);
-}
-
-function template_clean(var kv[named,slurpy]) {
-     var templates     = kv['template'] ? kv['template'] : {};
- 
-     for (string tmpl_file in templates) {
-         string targ_file = templates[tmpl_file];
-         unlink(targ_file, 1:[named('verbose')]);
-     }
-}
-
-function gen_tmpl_data(var conf) {
-    var vtable_wrappers   = gen_vtable_wrappers(conf['wrapped_vtables']);
-    var function_wrappers = gen_function_wrappers(conf['wrapped_functions']);
-    return {
-        '@libjit_iv@':            pick_iv(),
-        '@libjit_uv@':            pick_uv(),
-        '@libjit_nv@':            pick_nv(),
-        '@libjit_has_alloca@':    0, // XXX detect this properly
-        '@vtable_wrap_decls@':    join( "\n", decls( vtable_wrappers ) ),
-        '@vtable_wrap_defns@':    join( "\n", defns( vtable_wrappers ) ),
-        '@func_wrap_decls@':      join( "\n", decls( function_wrappers ) ),
-        '@func_wrap_defns@':      join( "\n", defns( function_wrappers ) )
-    };
 }
 
 /*
