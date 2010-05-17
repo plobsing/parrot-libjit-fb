@@ -1,62 +1,61 @@
 {
-    "name": "libjit_fb",
+    "name":    "libjit_fb",
     "version": "0.001",
 
-    "abstract": "libjit framebuilder",
+    "abstract":    "libjit framebuilder",
     "description": "Parrot plug-in library to dynamically build Native Call Interface call-out thunks based on LibJIT",
-    "keywords":
-	[ "libjit", "framebuilder", "nci", "jit" ],
+    "keywords":    [ "libjit", "framebuilder", "nci", "jit" ],
 
     "copyright_holder": "Peter Lobsinger",
-    "license_type": "Artistic License 2.0",
-    "license_uri"      : "http://www.perlfoundation.org/artistic_license_2_0",
+    "license_type":     "Artistic License 2.0",
+    "license_uri":      "http://www.perlfoundation.org/artistic_license_2_0",
 
-    "checkout_uri": "http://0.0.0.0/tba",
-    "browser_uri":  "http://0.0.0.0/tba",
-    "project_uri":  "http://0.0.0.0/tba",
+    "checkout_uri": "git://github.com/plobsing/parrot-libjit-fb.git",
+    "browser_uri":  "http://github.com/plobsing/parrot-libjit-fb",
+    "project_uri":  "http://github.com/plobsing/parrot-libjit-fb",
 
     "template": {
-	"src/libjitframebuilder.pmc.in": "src/libjitframebuilder.pmc"
+        "src/libjitframebuilder.pmc.in": "src/libjitframebuilder.pmc"
     },
 
     "dynpmc": {
-	"libjit_fb": [ "src/libjitthunk.pmc",  "src/libjitframebuilder.pmc" ]
+        "libjit_fb": [ "src/libjitthunk.pmc",  "src/libjitframebuilder.pmc" ]
     },
 
     "dynpmc_ldflags": "-ljit",
 
     "wrapped_vtables": {
-	"get_integer":          [ [],           "INTVAL" ],
-	"set_integer_native":   [ ["INTVAL"],   "void" ],
-	"get_pointer":          [ [],           "void_ptr" ],
-	"set_pointer":          [ ["void_ptr"], "void" ],
-	"get_string_keyed_int": [ ["INTVAL"],   "void_ptr" ]
+        "get_integer":          [ [],           "INTVAL" ],
+        "set_integer_native":   [ ["INTVAL"],   "void" ],
+        "get_pointer":          [ [],           "void_ptr" ],
+        "set_pointer":          [ ["void_ptr"], "void" ],
+        "get_string_keyed_int": [ ["INTVAL"],   "void_ptr" ]
     },
 
     "wrapped_functions": {
-	"Parrot_pcc_fill_params_from_c_args":
-	[ ["void_ptr", "void_ptr", "void_ptr", "..."],  "void" ],
-	"Parrot_pcc_build_call_from_c_args":
-	[ ["void_ptr", "void_ptr", "void_ptr", "..."],  "void" ],
-	"Parrot_str_new":
-	[ ["void_ptr", "void_ptr", "UINTVAL"],          "void_ptr" ],
-	"Parrot_str_cstring":
-	[ ["void_ptr", "void_ptr"],                     "void_ptr" ],
-	"Parrot_str_to_cstring":
-	[ ["void_ptr", "void_ptr"],                     "void_ptr" ],
-	"Parrot_str_free_cstring":
-	[ ["void_ptr"],                                 "void" ],
-	"Parrot_pmc_new_noinit":
-	[ ["void_ptr", "UINTVAL"],                      "void_ptr" ],
-	"mem_sys_allocate":
-	[ ["long"],                                     "void_ptr" ],
-	"mem_sys_free":
-	[ ["void_ptr"],                                 "void" ],
-	"null_func":
-	[ [],                                           "void" ],
-	"Parrot_NCI_pcc_params_signature":
-	[ ["void_ptr", "void_ptr"],                     "void_ptr" ],
-	"Parrot_NCI_pcc_return_signature":
-	[ ["void_ptr", "void_ptr"],                     "void_ptr" ]
+        "Parrot_pcc_fill_params_from_c_args":
+        [ ["void_ptr", "void_ptr", "void_ptr", "..."],  "void" ],
+        "Parrot_pcc_build_call_from_c_args":
+        [ ["void_ptr", "void_ptr", "void_ptr", "..."],  "void" ],
+        "Parrot_str_new":
+        [ ["void_ptr", "void_ptr", "UINTVAL"],          "void_ptr" ],
+        "Parrot_str_cstring":
+        [ ["void_ptr", "void_ptr"],                     "void_ptr" ],
+        "Parrot_str_to_cstring":
+        [ ["void_ptr", "void_ptr"],                     "void_ptr" ],
+        "Parrot_str_free_cstring":
+        [ ["void_ptr"],                                 "void" ],
+        "Parrot_pmc_new_noinit":
+        [ ["void_ptr", "UINTVAL"],                      "void_ptr" ],
+        "mem_sys_allocate":
+        [ ["long"],                                     "void_ptr" ],
+        "mem_sys_free":
+        [ ["void_ptr"],                                 "void" ],
+        "null_func":
+        [ [],                                           "void" ],
+        "Parrot_NCI_pcc_params_signature":
+        [ ["void_ptr", "void_ptr"],                     "void_ptr" ],
+        "Parrot_NCI_pcc_return_signature":
+        [ ["void_ptr", "void_ptr"],                     "void_ptr" ]
     }
 }
